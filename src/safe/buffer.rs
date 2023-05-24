@@ -626,7 +626,7 @@ impl NV_ENC_REGISTER_RESOURCE {
             resourceType: resource_type,
             width,
             height,
-            pitch: width * buffer_format.pitch(),
+            pitch: buffer_format.pitch(width),
             resourceToRegister: resource_to_register,
             registeredResource: std::ptr::null_mut(),
             bufferFormat: buffer_format,
