@@ -1,12 +1,6 @@
-use core::num;
-use std::{
-    ffi::c_void,
-    fs::{File, OpenOptions},
-    io::Write,
-    sync::Arc,
-};
+use std::{ffi::c_void, fs::File, sync::Arc};
 
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use cudarc::driver::{CudaDevice, DevicePtr};
 #[allow(deprecated)]
 use nvidia_video_codec_sdk::sys::nvEncodeAPI::NV_ENC_PRESET_LOW_LATENCY_HP_GUID;
@@ -213,22 +207,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                     + usize::try_from(preset_config.presetCfg.rcParams.lookaheadDepth)
                         .expect("lookahead depth should always be positive");
 
-                let mut output_buffers: Vec<_> = (0..num_bufs)
-                    .map(|_| {
-                        session
-                            .create_output_bitstream()
-                            .expect("The encoder should be able to create bitstreams")
-                    })
-                    .collect();
-
-                // Write result to output file "test.bin".
-                let mut out_file = OpenOptions::new()
-                    .write(true)
-                    .create(true)
-                    .truncate(true)
-                    .open("test.bin")
-                    .expect("Permissions and available space should allow creating a new file");
-
                 // Generate each of the frames with Vulkan.
                 (
                     (0..FRAMES)
@@ -243,22 +221,20 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                             )
                         })
                         .collect::<Vec<_>>(),
-                    output_buffers,
                     num_bufs,
                     cuda_device,
                     session,
-                    out_file,
                 )
             },
-            |(
-                mut file_descriptors,
-                mut output_buffers,
-                num_bufs,
-                cuda_device,
-                session,
-                out_file,
-            )| {
+            |(file_descriptors, num_bufs, cuda_device, session)| {
                 for (i, file_descriptor) in file_descriptors.into_iter().enumerate() {
+                    let mut output_buffers: Vec<_> = (0..num_bufs)
+                        .map(|_| {
+                            session
+                                .create_output_bitstream()
+                                .expect("The encoder should be able to create bitstreams")
+                        })
+                        .collect();
                     let output_buffer = &mut output_buffers[i % num_bufs];
 
                     // Import file descriptor using CUDA.
@@ -272,18 +248,18 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                         .expect("External memory should be mappable.");
 
                     // Register and map with NVENC.
-                    let (mut input_buffer, buf_fmt) = session
-            .register_and_map_input_resource(
-                NV_ENC_REGISTER_RESOURCE::new(
-                    NV_ENC_INPUT_RESOURCE_TYPE::NV_ENC_INPUT_RESOURCE_TYPE_CUDADEVICEPTR,
-                    1920,
-                    1080,
-                    *mapped_buffer.device_ptr() as *mut c_void,
-                    NV_ENC_BUFFER_FORMAT_ARGB,
-                )
-                .pitch(1080 * 4),
-            )
-            .expect("Should be able to register buffer with right size as nvenc resource");
+                    let (mut input_buffer, _) = session
+                    .register_and_map_input_resource(
+                        NV_ENC_REGISTER_RESOURCE::new(
+                            NV_ENC_INPUT_RESOURCE_TYPE::NV_ENC_INPUT_RESOURCE_TYPE_CUDADEVICEPTR,
+                            1920,
+                            1080,
+                            *mapped_buffer.device_ptr() as *mut c_void,
+                            NV_ENC_BUFFER_FORMAT_ARGB,
+                        )
+                        .pitch(1080 * 4),
+                    )
+                    .expect("Should be able to register buffer with right size as nvenc resource");
 
                     session
                         .encode_picture(NV_ENC_PIC_PARAMS::new(
@@ -296,21 +272,13 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                         ))
                         .expect("Encoder should be able to encode valid pictures");
 
-                    let out = output_buffer
-                        .lock_and_read(true)
-                        .expect("Bitstream lock should be available.");
-                    out_file.write_all(out).expect(
-                        "Writing should succeed because `out_file` was opened with write \
-                         permissions",
-                    );
-
                     // Drop registered resource before dropping the CUDA mapped buffer.
                     // TODO: `MappedResource` should store a reference or `PhantomData`
                     // to enforce drop order.
                     drop(input_buffer);
                 }
             },
-            BatchSize::SmallInput,
+            BatchSize::PerIteration,
         )
     });
 }
