@@ -289,7 +289,10 @@ fn main() {
         // to enforce drop order.
         drop(input_buffer);
     }
-    println!("Encoded example in {} seconds", now.elapsed().as_secs());
+    println!(
+        "Encoded example in {} microseconds",
+        now.elapsed().as_micros()
+    );
 }
 
 /// Allocates memory on a Vulkan [`Device`] and returns a [`File`] (file
