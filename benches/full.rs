@@ -3,17 +3,16 @@ use std::{ffi::c_void, fs::File, sync::Arc};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use cudarc::driver::{CudaDevice, DevicePtr};
 #[allow(deprecated)]
-use nvidia_video_codec_sdk::sys::nvEncodeAPI::NV_ENC_PRESET_LOW_LATENCY_HP_GUID;
 use nvidia_video_codec_sdk::{
     safe::encoder::Encoder,
     sys::nvEncodeAPI::{
         NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_ARGB,
         NV_ENC_CODEC_H264_GUID,
-        NV_ENC_H264_PROFILE_HIGH_GUID,
         NV_ENC_INITIALIZE_PARAMS,
         NV_ENC_INPUT_RESOURCE_TYPE,
         NV_ENC_PIC_PARAMS,
         NV_ENC_PIC_STRUCT,
+        NV_ENC_PRESET_HP_GUID,
         NV_ENC_REGISTER_RESOURCE,
         NV_ENC_TUNING_INFO,
     },
@@ -161,15 +160,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                     .get_preset_guids(encode_guid)
                     .expect("The encoder should have a preset for H.264");
                 #[allow(deprecated)]
-                let preset_guid = NV_ENC_PRESET_LOW_LATENCY_HP_GUID;
+                let preset_guid = NV_ENC_PRESET_HP_GUID;
                 assert!(preset_guids.contains(&preset_guid));
-
-                // Get available profiles based on encode guid.
-                let profile_guids = encoder
-                    .get_profile_guids(encode_guid)
-                    .expect("The encoder should have a profile for H.264");
-                let profile_guid = NV_ENC_H264_PROFILE_HIGH_GUID;
-                assert!(profile_guids.contains(&profile_guid));
 
                 // Get input formats based on the encode guid.
                 let input_formats = encoder
@@ -184,9 +176,11 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                     .get_preset_config(
                         encode_guid,
                         preset_guid,
-                        NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY,
+                        NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_LOW_LATENCY,
                     )
                     .expect("Encoder should be able to create config based on presets");
+
+                preset_config.presetCfg.rcParams.averageBitRate = 2_500_000;
 
                 // Initialize a new encoder session based on the `preset_config`
                 // we generated before.
