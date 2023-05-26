@@ -3,6 +3,7 @@ use std::{
     fs::{File, OpenOptions},
     io::Write,
     sync::Arc,
+    time::Instant,
 };
 
 use cudarc::driver::{CudaDevice, DevicePtr};
@@ -235,6 +236,9 @@ fn main() {
         .collect::<Vec<_>>();
 
     // Encode each of the frames.
+    // Keeping track of the time passed.
+    let now = Instant::now();
+
     for (i, file_descriptor) in file_descriptors.into_iter().enumerate() {
         let output_buffer = &mut output_buffers[i % num_bufs];
 
@@ -285,6 +289,7 @@ fn main() {
         // to enforce drop order.
         drop(input_buffer);
     }
+    println!("Encoded example in {} seconds", now.elapsed().as_secs());
 }
 
 /// Allocates memory on a Vulkan [`Device`] and returns a [`File`] (file
